@@ -347,7 +347,8 @@
     let adds=[],dyingAdds=[],waveSpawned=new Set();
     let playerPos={x:0,y:-world.stackDistance};
     const keys={};
-    const cycleAssignments={},cycleOrientations={},cycleDelays={},cycleAdjustedDrops={};
+    const cycleAssignments={},cycleOrientations={},cycleDelays={},cycleAdjustedDrops={},cycleFakeouts={};
+    let nextWanderTime=20+Math.random()*12;
     const checkedExplosions=new Set(),checkedLasers=new Set();
     let messageExpiry=0;
     let lastMunchTime=-999,lastMidnightTime=-999;
@@ -423,6 +424,14 @@
     function getCycleOrientation(i){if(!(i in cycleOrientations))cycleOrientations[i]=Math.random()<.5?1:0;return cycleOrientations[i];}
     // SP2 bot sometimes hesitates ~1s before moving out (50% chance per cycle)
     function getCycleSP2Delay(i){if(!(i in cycleDelays))cycleDelays[i]=0.7+Math.random()*.6;return cycleDelays[i];}
+    // Per-cycle fakeout: AI SP0/SP1 has 20% chance to move wrong way briefly then correct
+    function getCycleFakeout(ci,drops){
+      if(ci in cycleFakeouts)return cycleFakeouts[ci];
+      const f={};
+      [0,1].forEach(si=>{
+        if(Math.random()<0.2){
+          f[si]={wrongDrop:drops[1-si],dur:0.4+Math.random()*.35};}});
+      cycleFakeouts[ci]=f;return f;}
     // SP2 bot checks SP0's shards and picks a safe alternative drop once per cycle
     function getAdjustedSP2Drop(cycleIdx,stackPos,drops,orientB){
       if(cycleIdx in cycleAdjustedDrops)return cycleAdjustedDrops[cycleIdx];
@@ -577,11 +586,11 @@
     const stackGlow=makeRing(14,0xff9900,.85,.048);scene.add(stackGlow);
     // Warm disc: red inner fading to yellow — two layered discs
     const lightDiscRed=new THREE.Mesh(new THREE.CircleGeometry(world.lightRadius*scale*.55,64),
-      new THREE.MeshBasicMaterial({color:0xff2200,transparent:true,opacity:.32,side:THREE.DoubleSide}));
-    lightDiscRed.rotation.x=-Math.PI/2;lightDiscRed.position.y=.022;lightDiscRed.visible=false;scene.add(lightDiscRed);
+      new THREE.MeshBasicMaterial({color:0xff2200,transparent:true,opacity:.32,depthWrite:false}));
+    lightDiscRed.renderOrder=2;lightDiscRed.rotation.x=-Math.PI/2;lightDiscRed.visible=false;scene.add(lightDiscRed);
     const lightDisc=new THREE.Mesh(new THREE.CircleGeometry(world.lightRadius*scale,64),
-      new THREE.MeshBasicMaterial({color:0xffaa00,transparent:true,opacity:.26,side:THREE.DoubleSide}));
-    lightDisc.rotation.x=-Math.PI/2;lightDisc.position.y=.02;lightDisc.visible=false;scene.add(lightDisc);
+      new THREE.MeshBasicMaterial({color:0xffaa00,transparent:true,opacity:.26,depthWrite:false}));
+    lightDisc.renderOrder=1;lightDisc.rotation.x=-Math.PI/2;lightDisc.visible=false;scene.add(lightDisc);
 
     // ── OT cylinder + cone ────────────────────────────────────────────────────
     const otCyl=makeCyl(0xffd45a,0x553600,.21,.21,.72);scene.add(otCyl);
@@ -754,6 +763,8 @@
       playerCyl.position.copy(w2v(playerPos,baseY));
       playerRing.position.copy(w2v(playerPos,.04+(dur?liftY:0)));}
 
+    const aiWander=Array.from({length:17},()=>({active:false,startTime:0,endTime:0,fromPos:{x:0,y:0},target:{x:0,y:0}}));
+
     // ── AI players ────────────────────────────────────────────────────────────
     function updateAIPlayers(t,stackPos,liftY){
       const dur=t>=phase.reintegrationCast&&t<=phase.reintegrationCast+phase.stunDuration;
@@ -763,7 +774,16 @@
       const playerSP=cycle?getCycleAssignment(cycle.index):-1;
       const orientB=cycle?getCycleOrientation(cycle.index):0;
       const drops=cycle?splinterLayout(stackPos,orientB):null;
-      aiPlayers.forEach(ai=>{
+      // Trigger random wander for a non-SP AI
+      if(aft&&running&&t>=nextWanderTime){
+        const cands=aiPlayers.map((a,i)=>i).filter(i=>aiPlayers[i].spIndex===null&&!aiWander[i].active);
+        if(cands.length){
+          const idx=cands[Math.floor(Math.random()*cands.length)];
+          const ang=Math.random()*Math.PI*2,dist=world.lightRadius*.5+Math.random()*world.lightRadius*.3;
+          Object.assign(aiWander[idx],{active:true,startTime:t,endTime:t+0.9+Math.random()*.6,
+            fromPos:{...aiPlayers[idx].currentPos},target:add2(stackPos,polar(ang,dist))});}
+        nextWanderTime=t+12+Math.random()*15;}
+      aiPlayers.forEach((ai,i)=>{
         ai.mesh.visible=show;if(!show)return;
         let pos;
         if(ai.spIndex!==null&&cycle&&ai.spIndex!==playerSP){
@@ -771,9 +791,22 @@
           const eDrop=ai.spIndex===2?getAdjustedSP2Drop(cycle.index,stackPos,drops,orientB):drops[ai.spIndex];
           const st=splinterState(t-delay,cycle.index,ai.spIndex,stackPos,eDrop);
           pos=st?st.pos:add2(stackPos,ai.baseOffset);
+          // Chaotic fakeout: briefly move toward wrong side then self-correct
+          if(chaoticCheck.checked&&ai.spIndex<2&&drops){
+            const fo=getCycleFakeout(cycle.index,drops)[ai.spIndex];
+            if(fo){const applyI=phase.firstStarsplinter+cycle.index*phase.starsplinterSpacing+ai.spIndex*phase.starsApplyGap;
+              if(t>=applyI&&t<applyI+fo.dur){const p=smooth(clamp((t-applyI)/fo.dur,0,1));
+                pos={x:lerp(stackPos.x,fo.wrongDrop.x,p*.55),y:lerp(stackPos.y,fo.wrongDrop.y,p*.55)};}}}
         }else{
           const wx=Math.sin(t*.85+ai.wobblePhase)*ai.wobbleAmp,wy=Math.cos(t*.72+ai.wobblePhase*1.3)*ai.wobbleAmp;
-          pos=add2(stackPos,add2(ai.baseOffset,{x:wx,y:wy}));}
+          pos=add2(stackPos,add2(ai.baseOffset,{x:wx,y:wy}));
+          // Random wander override
+          const w=aiWander[i];
+          if(w.active){
+            const el=t-w.startTime,tot=w.endTime-w.startTime,half=tot/2;
+            if(el>=tot){w.active=false;}
+            else if(el<half){const p=smooth(el/half);pos={x:lerp(w.fromPos.x,w.target.x,p),y:lerp(w.fromPos.y,w.target.y,p)};}
+            else{const p=smooth((el-half)/half);const ret=add2(stackPos,ai.baseOffset);pos={x:lerp(w.target.x,ret.x,p),y:lerp(w.target.y,ret.y,p)};}}}
         ai.currentPos=pos;
         ai.mesh.position.copy(w2v(pos,.325+(dur?liftY:0)));});}
 
@@ -1086,8 +1119,8 @@
       stackGlow.position.copy(w2v(stackPos,.05+liftY));
       lightRing.position.copy(w2v(stackPos,.06+liftY));
       lightRingGlow.position.copy(w2v(stackPos,.06+liftY));
-      lightDisc.position.set(stackPos.x*scale,.02+liftY,stackPos.y*scale);
-      lightDiscRed.position.set(stackPos.x*scale,.022+liftY,stackPos.y*scale);
+      lightDisc.position.set(stackPos.x*scale,.06+liftY,stackPos.y*scale);
+      lightDiscRed.position.set(stackPos.x*scale,.065+liftY,stackPos.y*scale);
 
       otCyl.visible=showRaid;otCyl.position.copy(w2v(otPos,.36+liftY));
 
@@ -1207,6 +1240,8 @@
       Object.keys(cycleOrientations).forEach(k=>delete cycleOrientations[k]);
       Object.keys(cycleDelays).forEach(k=>delete cycleDelays[k]);
       Object.keys(cycleAdjustedDrops).forEach(k=>delete cycleAdjustedDrops[k]);
+      Object.keys(cycleFakeouts).forEach(k=>delete cycleFakeouts[k]);
+      aiWander.forEach(w=>w.active=false);nextWanderTime=20+Math.random()*12;
       checkedExplosions.clear();checkedLasers.clear();
       playerPos={x:0,y:-world.stackDistance};
       messageExpiry=0;messageEl.className='';lastMunchTime=-999;lastMidnightTime=-999;
