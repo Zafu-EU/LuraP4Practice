@@ -1,0 +1,858 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L'ura Phase 4 — 3D</title>
+  <style>
+    :root{color-scheme:dark;
+      --bg:#060812;--panel:rgb(12 14 24/88%);--text:#f5f7ff;
+      --muted:#aeb5ca;--blue:#85d8ff;--gold:#ffd45a;--danger:#ff5f86;}
+    *{box-sizing:border-box;}
+    body{margin:0;overflow:hidden;background:var(--bg);color:var(--text);
+      font-family:Inter,ui-sans-serif,system-ui,sans-serif;}
+    #scene{position:fixed;inset:0;}
+    .hud{position:fixed;left:16px;top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;z-index:2;pointer-events:none;}
+    .pill,.controls,.legend{background:var(--panel);border:1px solid rgb(255 255 255/13%);border-radius:8px;box-shadow:0 18px 50px rgb(0 0 0/30%);}
+    .pill{padding:8px 10px;color:var(--muted);font-size:13px;}
+    .pill strong{color:var(--text);}
+    .controls{position:fixed;right:16px;top:16px;width:252px;padding:14px;z-index:3;}
+    .controls h1{margin:0 0 4px;font-size:18px;}
+    .controls p{margin:0 0 10px;color:var(--muted);font-size:12px;line-height:1.35;}
+    .row{display:flex;gap:8px;align-items:center;margin-top:10px;}
+    button{border:1px solid rgb(255 255 255/14%);border-radius:8px;background:#1d2134;
+      color:var(--text);padding:8px 10px;font:inherit;cursor:pointer;}
+    button:hover{border-color:rgb(255 255 255/30%);}
+    input[type="range"]{width:100%;accent-color:var(--blue);}
+    .helper-row{margin-top:10px;display:flex;align-items:flex-start;gap:8px;}
+    .helper-row input[type="checkbox"]{margin-top:2px;accent-color:var(--gold);width:15px;height:15px;flex-shrink:0;cursor:pointer;}
+    .helper-row label{font-size:11px;color:var(--muted);cursor:pointer;line-height:1.4;}
+    .helper-row label strong{color:#ffcc44;}
+    .legend{position:fixed;left:16px;bottom:16px;width:min(540px,calc(100vw - 32px));
+      padding:12px 14px;color:var(--muted);font-size:12px;line-height:1.5;z-index:2;}
+    .legend strong{color:var(--text);}
+
+    #raidcall{position:fixed;top:68px;left:50%;transform:translateX(-50%);
+      display:flex;gap:6px;align-items:stretch;
+      background:rgb(4 6 16/86%);border:1px solid rgb(255 255 255/12%);
+      border-radius:10px;padding:8px 12px;z-index:4;pointer-events:none;
+      opacity:0;transition:opacity .25s;}
+    #raidcall.show{opacity:1;}
+    .sp-slot{display:flex;flex-direction:column;align-items:center;gap:2px;
+      padding:6px 14px;border-radius:6px;border:1px solid transparent;min-width:78px;transition:all .15s;}
+    .sp-slot .dir{font-size:17px;font-weight:900;color:var(--muted);white-space:nowrap;}
+    .sp-slot .lbl{font-size:11px;color:var(--muted);}
+    .sp-slot.stepping .dir,.sp-slot.stepping .lbl{color:var(--gold);}
+    .sp-slot.stepping{border-color:var(--gold);background:rgb(255 212 90/12%);}
+
+    #movecall{position:fixed;top:44%;left:50%;transform:translate(-50%,-50%);
+      text-align:center;z-index:4;pointer-events:none;opacity:0;transition:opacity .18s;}
+    #movecall.show{opacity:1;}
+    #movecall .movelabel{font-size:20px;font-weight:800;color:var(--gold);
+      text-shadow:0 2px 14px rgba(0,0,0,.95);letter-spacing:.12em;}
+    #movecall .bignum{font-size:104px;font-weight:900;line-height:.95;color:#fff;
+      text-shadow:0 0 48px rgba(255,212,90,.8),0 4px 24px rgba(0,0,0,.95);}
+
+    #message{position:fixed;top:20%;left:50%;transform:translateX(-50%);
+      font-size:30px;font-weight:900;text-align:center;z-index:5;pointer-events:none;
+      text-shadow:0 2px 20px rgba(0,0,0,.95);opacity:0;transition:opacity .25s;
+      letter-spacing:.04em;white-space:nowrap;}
+    #message.show{opacity:1;}
+    #message.danger{color:var(--danger);}
+    #message.bad{color:#ff9f1c;}
+    #message.alert{color:#fff;text-shadow:0 0 32px rgba(255,212,90,.9),0 2px 20px rgba(0,0,0,.95);}
+
+    /* Cast bar */
+    #castbar{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
+      width:340px;z-index:4;pointer-events:none;opacity:0;transition:opacity .2s;}
+    #castbar.show{opacity:1;}
+    #castbar .cast-label{font-size:13px;font-weight:600;color:var(--gold);margin-bottom:4px;text-align:center;
+      text-shadow:0 1px 8px rgba(0,0,0,.9);letter-spacing:.06em;}
+    #castbar .cast-track{height:18px;background:rgb(0 0 0/55%);border:1px solid rgb(255 255 255/18%);
+      border-radius:4px;overflow:hidden;}
+    #castbar .cast-fill{height:100%;background:linear-gradient(90deg,#ffd45a,#fff7a0);
+      width:0%;transition:width .06s linear;border-radius:4px;}
+
+    /* Scoreboard */
+    #scoreboard{position:fixed;inset:0;z-index:100;display:none;
+      background:rgb(0 0 0/75%);backdrop-filter:blur(6px);
+      align-items:center;justify-content:center;}
+    #scoreboard.show{display:flex;}
+    .score-card{background:#0d1022;border:1px solid rgb(255 255 255/18%);
+      border-radius:16px;padding:32px 40px;min-width:380px;max-width:480px;
+      box-shadow:0 32px 80px rgb(0 0 0/60%);}
+    .score-card h2{margin:0 0 4px;font-size:22px;text-align:center;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;}
+    .score-grade{font-size:88px;font-weight:900;text-align:center;line-height:1;margin:4px 0;}
+    .score-grade.gAp{color:#ffd45a;text-shadow:0 0 50px rgba(255,212,90,.9);}
+    .score-grade.gA {color:#a8e563;}
+    .score-grade.gB {color:#85d8ff;}
+    .score-grade.gC {color:#fff;}
+    .score-grade.gD {color:#ff9f1c;}
+    .score-grade.gF {color:#ff5f86;}
+    .score-grade.gFm{color:#ff5f86;text-shadow:0 0 30px rgba(255,30,30,.6);}
+    .score-pts{text-align:center;font-size:14px;color:var(--muted);margin-bottom:16px;}
+    .score-pts strong{color:var(--text);font-size:18px;}
+    .score-breakdown{border-top:1px solid rgb(255 255 255/10%);padding-top:14px;margin-bottom:16px;}
+    .score-row{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);padding:2px 0;}
+    .score-row .val{font-weight:700;}
+    .score-row .val.pos{color:#a8e563;}
+    .score-row .val.neg{color:var(--danger);}
+    .score-actions{display:flex;gap:10px;justify-content:center;}
+    .score-actions button{padding:10px 24px;font-size:14px;}
+  </style>
+</head>
+<body>
+  <div id="scene"></div>
+  <div class="hud">
+    <div class="pill">Time <strong id="clock">0.0s</strong></div>
+    <div class="pill">State <strong id="state">Reintegration</strong></div>
+    <div class="pill">Cycle <strong id="cycle">1 / 4</strong></div>
+    <div class="pill">Score <strong id="scorepill">0</strong></div>
+  </div>
+  <div id="raidcall">
+    <div class="sp-slot" id="sp0"><div class="dir">⬅ LEFT</div><div class="lbl">SP 1</div></div>
+    <div class="sp-slot" id="sp1"><div class="dir">RIGHT ➡</div><div class="lbl">SP 2</div></div>
+    <div class="sp-slot" id="sp2"><div class="dir">⬅ LEFT</div><div class="lbl">SP 3</div></div>
+  </div>
+  <div id="movecall">
+    <div class="movelabel">MOVE IN</div>
+    <div class="bignum" id="movecountdown">3</div>
+  </div>
+  <div id="castbar">
+    <div class="cast-label">REINTEGRATION</div>
+    <div class="cast-track"><div class="cast-fill" id="castfill"></div></div>
+  </div>
+  <div id="message"></div>
+
+  <div id="scoreboard">
+    <div class="score-card">
+      <h2>Phase Complete</h2>
+      <div class="score-grade" id="sgrade">A+</div>
+      <div class="score-pts">Score: <strong id="sfinal">0</strong></div>
+      <div class="score-breakdown">
+        <div class="score-row"><span>Time safe in light circle</span><span class="val pos" id="sr-safe">+0</span></div>
+        <div class="score-row"><span>Players sliced (−10 each)</span><span class="val neg" id="sr-slice">−0</span></div>
+        <div class="score-row"><span>Got sliced (−10 each)</span><span class="val neg" id="sr-sliced">−0</span></div>
+        <div class="score-row"><span>Got munched (−5 each)</span><span class="val neg" id="sr-munch">−0</span></div>
+        <div class="score-row"><span>Midnight Falls (−100 each)</span><span class="val neg" id="sr-midnight">−0</span></div>
+        <div class="score-row"><span>Got zapped (−100 each)</span><span class="val neg" id="sr-zap">−0</span></div>
+        <div class="score-row"><span>Wrong side on SP (−15 each)</span><span class="val neg" id="sr-wrongside">−0</span></div>
+      </div>
+      <div class="score-actions">
+        <button id="sbRestart">Play Again</button>
+      </div>
+    </div>
+  </div>
+
+  <aside class="controls">
+    <h1>L'ura P4 3D</h1>
+    <p><strong style="color:#fff">WASD</strong> — W/S toward/away boss, A/D strafe. White cylinder = you. SP assigned randomly each cycle.</p>
+    <div class="row">
+      <button id="play">Pause</button>
+      <button id="restart">Restart</button>
+    </div>
+    <div class="row">
+      <label for="speed" style="font-size:12px;color:var(--muted)">Speed</label>
+      <input id="speed" type="range" min="0.25" max="2" value="1" step="0.25">
+    </div>
+    <div class="helper-row">
+      <input type="checkbox" id="helper" checked>
+      <label for="helper">Show movement helper (SP target ring)<br>
+        <strong>⚠ Enabled: score ×0.5 per second</strong></label>
+    </div>
+  </aside>
+
+  <div class="legend">
+    <strong>White:</strong> you &nbsp;|&nbsp; <strong>Blue:</strong> raid &nbsp;|&nbsp;
+    <strong>Gold:</strong> OT + cone &nbsp;|&nbsp; <strong>Yellow disc:</strong> light safe zone &nbsp;|&nbsp;
+    <strong>Cyan ring:</strong> your SP target &nbsp;|&nbsp;
+    Orientation A/B rotates shard pattern 45°
+  </div>
+
+  <script type="module">
+    import * as THREE from "https://unpkg.com/three@0.165.0/build/three.module.js";
+
+    // ── DOM ──────────────────────────────────────────────────────────────────
+    const mount=document.getElementById("scene");
+    const clockEl=document.getElementById("clock"),stateEl=document.getElementById("state"),cycleEl=document.getElementById("cycle");
+    const scorePillEl=document.getElementById("scorepill");
+    const playBtn=document.getElementById("play"),restartBtn=document.getElementById("restart"),speedInput=document.getElementById("speed");
+    const helperCheck=document.getElementById("helper");
+    const raidcallEl=document.getElementById("raidcall"),movecallEl=document.getElementById("movecall");
+    const movecountdownEl=document.getElementById("movecountdown"),messageEl=document.getElementById("message");
+    const spSlotEls=[0,1,2].map(i=>document.getElementById(`sp${i}`));
+    const castbarEl=document.getElementById("castbar"),castfillEl=document.getElementById("castfill");
+    const scoreboardEl=document.getElementById("scoreboard");
+
+    // ── Phase / world ────────────────────────────────────────────────────────
+    const phase={
+      duration:90,reintegrationCast:5,
+      firstStarsplinter:16,starsplinterSpacing:20,
+      heavenSpacing:20,firstHeaven:22,
+      starsApplyGap:1,starsExplosionDelay:3,
+      moveOutDuration:1.35,returnDuration:1.45,
+      stunDuration:7,heavenRampDuration:4,heavenLaserDuration:4,
+      raidDirection:-1,raidAdvanceDegrees:110,
+      shaBaseInterval:0.34,shaSpeed:28,shaWaveSpeed:38,
+      tankConeDelay:1.55,tankConeDuration:2.5
+    };
+    const world={
+      roomRadius:285,bossRadius:36,stackDistance:168,
+      offTankDistance:150,lightRadius:75,shardLength:112,coneLength:136
+    };
+    const scale=0.052;
+    const splinterSides=[1,-1,1];
+    const splinterProfiles=[{tangential:58,radial:16},{tangential:72,radial:18},{tangential:70,radial:12}];
+    const immunityColors=[0xaad372,0xffd45a,0xff89c2];
+    const MARKER_COLORS=[0xffdd00,0xff8c00,0xaa44ff,0x44ff88];
+    const CAM_BACK=160,CAM_H=9.5;
+
+    // ── State ────────────────────────────────────────────────────────────────
+    let time=0,last=performance.now(),running=true;
+    let seed=5,lastAddTime=-999,nextAddId=1;
+    let adds=[],dyingAdds=[],waveSpawned=new Set();
+    let playerPos={x:0,y:-world.stackDistance};
+    const keys={};
+    const cycleAssignments={},cycleOrientations={};
+    const checkedExplosions=new Set(),checkedLasers=new Set();
+    let messageExpiry=0;
+    let lastMunchTime=-999,lastMidnightTime=-999;
+    // Score
+    let score=0;
+    const penalties={sliceOthers:0,sliced:0,munched:0,midnight:0,zapped:0,wrongSide:0};
+    let safeAccum=0;
+    let scoreboardShown=false;
+
+    window.addEventListener("keydown",e=>{if("wasd".includes(e.key.toLowerCase()))e.preventDefault();keys[e.key.toLowerCase()]=true;});
+    window.addEventListener("keyup",e=>{keys[e.key.toLowerCase()]=false;});
+    window.addEventListener("blur",()=>Object.keys(keys).forEach(k=>keys[k]=false));
+
+    function getCycleAssignment(i){if(!(i in cycleAssignments))cycleAssignments[i]=Math.floor(Math.random()*3);return cycleAssignments[i];}
+    function getCycleOrientation(i){if(!(i in cycleOrientations))cycleOrientations[i]=Math.random()<.5?1:0;return cycleOrientations[i];}
+
+    // ── Three.js ─────────────────────────────────────────────────────────────
+    const scene=new THREE.Scene();
+    scene.background=new THREE.Color(0x060812);
+    scene.fog=new THREE.Fog(0x060812,18,50);
+    const camera=new THREE.PerspectiveCamera(54,innerWidth/innerHeight,.1,130);
+    const renderer=new THREE.WebGLRenderer({antialias:true});
+    renderer.setSize(innerWidth,innerHeight);
+    renderer.setPixelRatio(Math.min(2,devicePixelRatio||1));
+    mount.appendChild(renderer.domElement);
+    scene.add(new THREE.HemisphereLight(0x9bbdff,0x120816,1.2));
+    const keyLight=new THREE.DirectionalLight(0xffffff,1.6);keyLight.position.set(8,14,7);scene.add(keyLight);
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    function w2v(p,y=0){return new THREE.Vector3(p.x*scale,y,p.y*scale);}
+    function polar(a,r){return{x:Math.cos(a)*r,y:Math.sin(a)*r};}
+    function add2(a,b){return{x:a.x+b.x,y:a.y+b.y};}
+    function sub2(a,b){return{x:a.x-b.x,y:a.y-b.y};}
+    function mul2(a,n){return{x:a.x*n,y:a.y*n};}
+    function len2(a){return Math.hypot(a.x,a.y);}
+    function norm2(a){const l=len2(a)||1;return{x:a.x/l,y:a.y/l};}
+    function angleOf(p){return Math.atan2(p.y,p.x);}
+    function normalizeAngle(a){while(a<=-Math.PI)a+=Math.PI*2;while(a>Math.PI)a-=Math.PI*2;return a;}
+    function angularDelta(f,t){return normalizeAngle(t-f);}
+    function rotate2(v,a){const c=Math.cos(a),s=Math.sin(a);return{x:v.x*c-v.y*s,y:v.x*s+v.y*c};}
+    function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+    function lerp(a,b,p){return a+(b-a)*p;}
+    function smooth(p){p=clamp(p,0,1);return p*p*(3-2*p);}
+    function rand(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;}
+    function makeRing(radius,color,opacity,tube=0.04){
+      const m=new THREE.Mesh(new THREE.TorusGeometry(radius*scale,tube,12,96),
+        new THREE.MeshBasicMaterial({color,transparent:true,opacity}));
+      m.rotation.x=Math.PI/2;return m;}
+    function makeCyl(color,emissive=0,rT=0.19,rB=0.19,h=0.68){
+      return new THREE.Mesh(new THREE.CylinderGeometry(rT,rB,h,8),
+        new THREE.MeshStandardMaterial({color,emissive,roughness:.6,metalness:.1}));}
+    function orientCylBetween(m,s3,e3){
+      const dir=e3.clone().sub(s3),len=dir.length();
+      if(len<.001){m.visible=false;return;}
+      m.scale.y=len;m.position.copy(s3.clone().add(e3).multiplyScalar(.5));
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir.normalize());m.visible=true;}
+    function showMessage(text,type,dur=3.2){
+      messageEl.textContent=text;messageEl.className=`show ${type}`;messageExpiry=time+dur;}
+    function penalize(type,amount,text,msgType='danger'){
+      score-=amount;penalties[type]=(penalties[type]||0)+amount;
+      showMessage(text,msgType);}
+
+    // ── Timing ────────────────────────────────────────────────────────────────
+    function raidAngleAt(t){
+      let a=-Math.PI/2;
+      for(let i=0;i<3;i++){
+        const ht=phase.firstHeaven+i*phase.heavenSpacing;if(t<=ht)break;
+        const dur=phase.heavenRampDuration+phase.heavenLaserDuration;
+        a+=phase.raidDirection*phase.raidAdvanceDegrees*Math.PI/180*smooth(clamp((t-ht)/dur,0,1));
+        if(t>=ht+dur)a=-Math.PI/2+phase.raidDirection*(i+1)*phase.raidAdvanceDegrees*Math.PI/180;}
+      return a;}
+    function raidPosAt(t){return polar(raidAngleAt(t),world.stackDistance);}
+    function currentHeaven(t){
+      for(let i=0;i<3;i++){const s=phase.firstHeaven+i*phase.heavenSpacing,ls=s+phase.heavenRampDuration,e=ls+phase.heavenLaserDuration;
+        if(t>=s&&t<=e)return{index:i,start:s,laserStart:ls,end:e};}return null;}
+    function heavenCountdownAt(t){
+      for(let i=0;i<3;i++){const s=phase.firstHeaven+i*phase.heavenSpacing;if(t>=s-3&&t<s)return{index:i,start:s,remaining:s-t};}return null;}
+    function activeStarsplinterCycle(t){
+      for(let c=0;c<4;c++){const s=phase.firstStarsplinter+c*phase.starsplinterSpacing;if(t>=s-1.2&&t<=s+9)return{index:c,start:s,end:s+9};}return null;}
+    function directedRaidDelta(f,t){return normalizeAngle((t-f)*phase.raidDirection);}
+    function stunLiftAt(t){
+      const s=phase.reintegrationCast,e=s+phase.stunDuration;if(t<s||t>e)return 0;
+      const dt=t-s,p=dt<=5.5?smooth(dt/5.5):1-smooth((dt-5.5)/1.5);return p*5.8;}
+    function coneActive(t){
+      const c=activeStarsplinterCycle(t);if(!c)return false;
+      const s=c.start+phase.tankConeDelay,e=s+phase.tankConeDuration;return t>=s&&t<=e;}
+
+    // ── Splinter layout ────────────────────────────────────────────────────────
+    function splinterLayout(stackPos,orientB){
+      const r=norm2(stackPos);
+      return splinterSides.map((side,i)=>{
+        const t={x:-r.y*side,y:r.x*side},p=splinterProfiles[i];
+        let d=add2(stackPos,add2(mul2(t,p.tangential),mul2(r,p.radial)));
+        if(orientB){const rel=sub2(d,stackPos);d=add2(stackPos,rotate2(rel,28*Math.PI/180*side));}
+        const rel=sub2(d,stackPos),dist=len2(rel),maxR=world.lightRadius-4;
+        if(dist>maxR)d=add2(stackPos,mul2(norm2(rel),maxR));
+        return d;});}
+    function shardAnglesForDrop(stackPos,drop,orientB){
+      const da=angleOf(sub2(stackPos,drop)),ex=orientB?Math.PI/4:0;
+      return Array.from({length:6},(_,i)=>da+Math.PI/6+ex+i*Math.PI/3);}
+    function splinterState(t,ci,si,stackPos,drop){
+      const apply=phase.firstStarsplinter+ci*phase.starsplinterSpacing+si*phase.starsApplyGap;
+      const explode=apply+phase.starsExplosionDelay,retEnd=explode+phase.returnDuration;
+      if(t<apply||t>retEnd)return null;
+      let pos=stackPos,sv=false,ex=false;
+      if(t<apply+phase.moveOutDuration){
+        const p=smooth((t-apply)/phase.moveOutDuration);
+        pos={x:lerp(stackPos.x,drop.x,p),y:lerp(stackPos.y,drop.y,p)};sv=p>=.68;
+      }else if(t<explode){pos=drop;sv=true;}
+      else{ex=t<explode+.36;sv=ex;const p=smooth((t-explode)/phase.returnDuration);pos={x:lerp(drop.x,stackPos.x,p),y:lerp(drop.y,stackPos.y,p)};}
+      return{pos,drop,explode,exploding:ex,shardsVisible:sv,angles:shardAnglesForDrop(stackPos,drop,getCycleOrientation(ci))};}
+
+    // ── Collision helpers ─────────────────────────────────────────────────────
+    function shardHitsPos(drop,angle,target,hitR=11){
+      const dir={x:Math.cos(angle),y:Math.sin(angle)},rel=sub2(target,drop);
+      const along=rel.x*dir.x+rel.y*dir.y;
+      if(along<0||along>world.shardLength)return false;
+      return len2(sub2(target,add2(drop,mul2(dir,along))))<hitR;}
+
+    // ── World markers ─────────────────────────────────────────────────────────
+    const wmpPositions=[0,1,2,3].map(i=>polar(-Math.PI/2+phase.raidDirection*i*phase.raidAdvanceDegrees*Math.PI/180,world.stackDistance));
+    function markerArrivalTime(i){
+      if(i===0)return phase.firstHeaven;
+      return phase.firstHeaven+(i-1)*phase.heavenSpacing+phase.heavenRampDuration+phase.heavenLaserDuration;}
+    const worldMarkers=wmpPositions.map((pos,i)=>{
+      const col=MARKER_COLORS[i];
+      const mat=new THREE.MeshStandardMaterial({color:col,emissive:col,emissiveIntensity:.35,transparent:true,opacity:.5,roughness:.4});
+      const mesh=new THREE.Mesh(new THREE.CylinderGeometry(.44,.52,2.1,16),mat);
+      mesh.position.copy(w2v(pos,1.05));scene.add(mesh);
+      const ring=makeRing(16,col,.85,.055);ring.position.copy(w2v(pos,.03));scene.add(ring);
+      return{mesh,ring,mat,ringMat:ring.material};});
+
+    // ── Floor / room ──────────────────────────────────────────────────────────
+    const floorMesh=new THREE.Mesh(new THREE.CylinderGeometry(world.roomRadius*scale,world.roomRadius*scale,.05,160),
+      new THREE.MeshStandardMaterial({color:0x14172a,roughness:.84,metalness:.05}));
+    floorMesh.position.y=-.04;scene.add(floorMesh);
+    scene.add(makeRing(world.roomRadius,0xffffff,.16,.025));
+    const floorLineMat=new THREE.LineBasicMaterial({color:0x85d8ff,transparent:true,opacity:.15});
+    for(let r=55;r<=world.roomRadius-30;r+=38){const rg=makeRing(r,0x85d8ff,.1,.012);rg.position.y=.025;scene.add(rg);}
+    for(let i=0;i<24;i++){const a=i*Math.PI/12;
+      scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([w2v(polar(a,42),.035),w2v(polar(a,world.roomRadius-10),.035)]),floorLineMat));}
+
+    // ── Boss ──────────────────────────────────────────────────────────────────
+    const boss=new THREE.Mesh(new THREE.SphereGeometry(world.bossRadius*scale,32,18),
+      new THREE.MeshStandardMaterial({color:0x6f42c1,emissive:0x2c104f,roughness:.4}));
+    boss.position.set(0,world.bossRadius*scale,0);scene.add(boss);
+
+    // ── Light zone ────────────────────────────────────────────────────────────
+    const lightRing=makeRing(world.lightRadius,0x85d8ff,.95,.075);scene.add(lightRing);
+    const stackGlow=makeRing(23,0x85d8ff,.92,.055);scene.add(stackGlow);
+    const lightDisc=new THREE.Mesh(new THREE.CircleGeometry(world.lightRadius*scale,64),
+      new THREE.MeshBasicMaterial({color:0xffee66,transparent:true,opacity:.09,side:THREE.DoubleSide}));
+    lightDisc.rotation.x=-Math.PI/2;lightDisc.position.y=.02;lightDisc.visible=false;scene.add(lightDisc);
+
+    // ── OT cylinder + cone ────────────────────────────────────────────────────
+    const otCyl=makeCyl(0xffd45a,0x553600,.21,.21,.72);scene.add(otCyl);
+    const otConeMesh=(()=>{
+      const ha=Math.PI/4,n=24,r=world.coneLength*scale,pts=[];
+      for(let i=0;i<n;i++){
+        const a1=-ha+i*(2*ha/n),a2=-ha+(i+1)*(2*ha/n);
+        pts.push(0,.04,0,Math.cos(a1)*r,.04,Math.sin(a1)*r,Math.cos(a2)*r,.04,Math.sin(a2)*r);}
+      const g=new THREE.BufferGeometry();g.setAttribute("position",new THREE.Float32BufferAttribute(pts,3));g.computeVertexNormals();
+      const m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({color:0xffd45a,transparent:true,opacity:.32,side:THREE.DoubleSide}));
+      m.visible=false;scene.add(m);return m;})();
+
+    // ── 17 AI cylinders ───────────────────────────────────────────────────────
+    const aiPlayers=[];
+    {const offsets=[];
+      [[5,6],[10,7],[16,4]].forEach(([r,n],ri)=>{
+        for(let j=0;j<n;j++){const a=j*(2*Math.PI/n)+ri*.55;offsets.push({x:Math.cos(a)*r,y:Math.sin(a)*r});}});
+      for(let i=0;i<17;i++){
+        const isSP=i<3,col=isSP?0x5599ff:0x4466bb,emis=isSP?0x102244:0x0a1122;
+        const mesh=makeCyl(col,emis,.18,.18,.65);scene.add(mesh);
+        aiPlayers.push({mesh,spIndex:isSP?i:null,baseOffset:offsets[i]||{x:0,y:0},
+          wobblePhase:i*.91,wobbleAmp:1.6,currentPos:{x:0,y:-world.stackDistance}});}}
+
+    // ── Player ────────────────────────────────────────────────────────────────
+    const playerCyl=makeCyl(0xffffff,0x999999,.22,.22,.74);
+    const playerRing=makeRing(11,0xffffff,.82,.042);
+    scene.add(playerCyl);scene.add(playerRing);
+    const targetRing=makeRing(18,0x85d8ff,.8,.055);targetRing.visible=false;scene.add(targetRing);
+
+    // ── Immunity ──────────────────────────────────────────────────────────────
+    const immuneMesh=new THREE.Mesh(new THREE.SphereGeometry(.28,18,12),
+      new THREE.MeshStandardMaterial({color:0xaad372,emissive:0x203a0c}));scene.add(immuneMesh);
+
+    // ── Stun field ────────────────────────────────────────────────────────────
+    const stunFieldMat=new THREE.MeshBasicMaterial({color:0x5cc8ff,transparent:true,opacity:.12});
+    const stunField=new THREE.Mesh(new THREE.CylinderGeometry(world.roomRadius*scale+.04,world.roomRadius*scale+.04,.035,160),stunFieldMat);
+    stunField.position.y=.01;stunField.visible=false;scene.add(stunField);
+
+    // ── Laser flash overlay ───────────────────────────────────────────────────
+    const laserFlashMat=new THREE.MeshBasicMaterial({color:0xff1010,transparent:true,opacity:0});
+    const laserFlash=new THREE.Mesh(new THREE.CylinderGeometry(world.roomRadius*scale+.2,world.roomRadius*scale+.2,.04,80),laserFlashMat);
+    laserFlash.position.y=.012;scene.add(laserFlash);
+
+    // ── Heaven beam (very thick) ──────────────────────────────────────────────
+    const beamCyl=new THREE.Mesh(new THREE.CylinderGeometry(.18,.18,1,8),
+      new THREE.MeshBasicMaterial({color:0xff2a43,transparent:true,opacity:.96}));
+    beamCyl.visible=false;scene.add(beamCyl);
+    const beamGlowCyl=new THREE.Mesh(new THREE.CylinderGeometry(.34,.34,1,8),
+      new THREE.MeshBasicMaterial({color:0x69d6ff,transparent:true,opacity:.3}));
+    beamGlowCyl.visible=false;scene.add(beamGlowCyl);
+    const beamPulses=[0,1,2].map(()=>{const r=makeRing(12,0x69d6ff,.8,.035);r.visible=false;scene.add(r);return r;});
+    let beamTip2d={x:0,y:0};
+
+    // ── Shard cylinders ───────────────────────────────────────────────────────
+    const shardMat=new THREE.MeshBasicMaterial({color:0xff5f86,transparent:true,opacity:.88});
+    const shardCylinders=Array.from({length:18},()=>{
+      const m=new THREE.Mesh(new THREE.CylinderGeometry(.042,.042,1,6),shardMat);m.visible=false;scene.add(m);return m;});
+    function setShardCyl(idx,a,b){orientCylBetween(shardCylinders[idx],w2v(a,.12),w2v(b,.12));}
+
+    // ── Pulse triangles ───────────────────────────────────────────────────────
+    const triGeom=new THREE.BufferGeometry();
+    triGeom.setAttribute("position",new THREE.Float32BufferAttribute([0,.04,.48,-.22,.04,-.25,.22,.04,-.25],3));
+    triGeom.computeVertexNormals();
+    const pulseMat=new THREE.MeshBasicMaterial({color:0xff2a43,side:THREE.DoubleSide});
+    const pulseTriangles=Array.from({length:18},()=>{const t=new THREE.Mesh(triGeom,pulseMat);t.visible=false;scene.add(t);return t;});
+
+    // ── Splinter markers ──────────────────────────────────────────────────────
+    const splinterMeshes=[0,1,2].map(()=>{
+      const m=new THREE.Mesh(new THREE.SphereGeometry(.28,18,12),
+        new THREE.MeshStandardMaterial({color:0xff5f86,emissive:0x4f0619,roughness:.35}));
+      scene.add(m);return m;});
+
+    // ── Add materials ─────────────────────────────────────────────────────────
+    const mPurp=new THREE.MeshStandardMaterial({color:0x9b69d7,emissive:0x211039,roughness:.45});
+    const mPink=new THREE.MeshStandardMaterial({color:0xff5f86,emissive:0x3d0614,roughness:.45});
+    const mWhite=new THREE.MeshStandardMaterial({color:0xffffff,emissive:0x777777,roughness:.25});
+
+    // ── Add logic ─────────────────────────────────────────────────────────────
+    function offTankPos(sp){return polar(angleOf(sp),world.offTankDistance);}
+    function addThreatensRaidPath(a,heaven,t){
+      if(!heaven)return false;
+      const pl=phase.raidAdvanceDegrees*Math.PI/180,sa=-Math.PI/2+phase.raidDirection*heaven.index*pl,ea=sa+phase.raidDirection*pl;
+      const addA=angleOf(a.pos),ahead=directedRaidDelta(raidAngleAt(t),addA),rem=Math.max(0,directedRaidDelta(raidAngleAt(t),ea));
+      const pp=directedRaidDelta(sa,addA),r=len2(a.pos),ttr=(world.stackDistance-r)/Math.max(1,a.speed);
+      return ahead>=0&&ahead<=rem+10*Math.PI/180&&pp>=-0.001&&pp<=pl+0.001&&r<world.stackDistance+28&&ttr>-.7&&ttr<(heaven.end-t)+2.0;}
+    function immunityPos(t,sp){
+      const h=currentHeaven(t),home=add2(sp,mul2(norm2(sp),-28));if(!h)return home;
+      const threat=adds.filter(a=>addThreatensRaidPath(a,h,t)).sort((a,b)=>Math.abs(world.stackDistance-len2(a.pos))-Math.abs(world.stackDistance-len2(b.pos)))[0];
+      const rad=norm2(sp),fs=h.index===1?-1:1,fb=add2(home,mul2({x:-rad.y*fs,y:rad.x*fs},48));
+      const intercept=threat?add2(threat.pos,mul2(threat.dir,20)):fb;
+      const mp=smooth(clamp((t-h.start)/2.2,0,1)),rp=smooth(clamp((t-(h.end-1.4))/1.4,0,1));
+      const active={x:lerp(home.x,intercept.x,mp),y:lerp(home.y,intercept.y,mp)};
+      return{x:lerp(active.x,home.x,rp),y:lerp(active.y,home.y,rp)};}
+    function soakAdd(a,t,soaker){
+      if(t-a.lastSoakedAt<1.2)return;
+      const away=norm2(sub2(a.pos,soaker));
+      a.dir=norm2(rotate2(a.dir,clamp(angularDelta(angleOf(a.dir),angleOf(away)),-Math.PI/4,Math.PI/4)));
+      a.soakedUntil=t+1.5;a.lastSoakedAt=t;}
+    function spawnAdd(t,wave){
+      const a=rand()*Math.PI*2,s=polar(a,world.bossRadius+8);
+      const mesh=new THREE.Mesh(new THREE.SphereGeometry(wave?.52:.42,18,12),wave?mPink:mPurp);
+      scene.add(mesh);
+      adds.push({id:nextAddId++,pos:s,dir:{x:Math.cos(a),y:Math.sin(a)},
+        speed:(wave?phase.shaWaveSpeed:phase.shaSpeed)*(0.82+rand()*.36),
+        wave,wobble:rand()*Math.PI*2,soakedUntil:0,lastSoakedAt:-999,mesh});}
+    function updateAdds(t,dt,sp,otp,ip){
+      if(t<phase.reintegrationCast+phase.stunDuration)return;
+      const cycle=activeStarsplinterCycle(t);
+      if(cycle&&t>=cycle.start&&!waveSpawned.has(cycle.index)){for(let i=0;i<18;i++)spawnAdd(t,true);waveSpawned.add(cycle.index);}
+      if(t-lastAddTime>=phase.shaBaseInterval){spawnAdd(t,false);lastAddTime=t;}
+      for(const a of adds){
+        const w={x:-a.dir.y,y:a.dir.x};
+        a.pos=add2(a.pos,add2(mul2(a.dir,a.speed*dt),mul2(w,Math.sin(t*2.2+a.wobble)*2.1*dt)));
+        if(len2(sub2(a.pos,otp))<22)soakAdd(a,t,otp);
+        if(currentHeaven(t)&&len2(sub2(a.pos,ip))<20)soakAdd(a,t,ip);
+        a.mesh.material=t<a.soakedUntil?mWhite:(a.wave?mPink:mPurp);
+        a.mesh.position.copy(w2v(a.pos,a.wave?.52:.42));}
+      adds=adds.filter(a=>{const keep=len2(a.pos)<world.roomRadius+40&&len2(sub2(a.pos,sp))>7;if(!keep)scene.remove(a.mesh);return keep;});}
+
+    // ── Cone kills ────────────────────────────────────────────────────────────
+    function updateConeKills(t,stackPos){
+      if(!coneActive(t))return;
+      const otp=offTankPos(stackPos),fwd=norm2(mul2(stackPos,-1));
+      adds=adds.filter(a=>{
+        const rel=sub2(a.pos,otp);
+        const along=rel.x*fwd.x+rel.y*fwd.y;
+        if(along<0||along>world.coneLength)return true;
+        const side=Math.abs(rel.x*(-fwd.y)+rel.y*fwd.x);
+        if(side>along*Math.tan(Math.PI/4)+12)return true;
+        // Killed — flash out
+        a.mesh.material=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:1});
+        dyingAdds.push({pos:{...a.pos},startT:t,mesh:a.mesh});
+        return false;});}
+
+    function updateDyingAdds(t){
+      for(let i=dyingAdds.length-1;i>=0;i--){
+        const d=dyingAdds[i],p=clamp((t-d.startT)/.35,0,1);
+        if(p>=1){scene.remove(d.mesh);dyingAdds.splice(i,1);continue;}
+        d.mesh.position.copy(w2v(d.pos,.42+p*.9));
+        d.mesh.material.opacity=1-p;
+        d.mesh.scale.setScalar(1+p*2.5);}}
+
+    // ── Player ────────────────────────────────────────────────────────────────
+    function updatePlayer(t,dt,stackPos,liftY){
+      const dur=t>=phase.reintegrationCast&&t<=phase.reintegrationCast+phase.stunDuration;
+      const aft=t>phase.reintegrationCast+phase.stunDuration;
+      playerCyl.visible=playerRing.visible=dur||aft;if(!playerCyl.visible)return;
+      if(aft&&running){
+        const spd=52*dt,rad=norm2(stackPos),tan={x:-rad.y,y:rad.x};
+        if(keys['w'])playerPos=add2(playerPos,mul2({x:-rad.x,y:-rad.y},spd));
+        if(keys['s'])playerPos=add2(playerPos,mul2(rad,spd));
+        if(keys['a'])playerPos=add2(playerPos,mul2(tan,spd));
+        if(keys['d'])playerPos=add2(playerPos,mul2({x:rad.y,y:-rad.x},spd));}
+      if(dur)playerPos={...stackPos};
+      const baseY=.34+(dur?liftY:0);
+      playerCyl.position.copy(w2v(playerPos,baseY));
+      playerRing.position.copy(w2v(playerPos,.04+(dur?liftY:0)));}
+
+    // ── AI players ────────────────────────────────────────────────────────────
+    function updateAIPlayers(t,stackPos,liftY){
+      const dur=t>=phase.reintegrationCast&&t<=phase.reintegrationCast+phase.stunDuration;
+      const aft=t>phase.reintegrationCast+phase.stunDuration;
+      const show=dur||aft;
+      const cycle=activeStarsplinterCycle(t);
+      const playerSP=cycle?getCycleAssignment(cycle.index):-1;
+      const orientB=cycle?getCycleOrientation(cycle.index):0;
+      const drops=cycle?splinterLayout(stackPos,orientB):null;
+      aiPlayers.forEach(ai=>{
+        ai.mesh.visible=show;if(!show)return;
+        let pos;
+        if(ai.spIndex!==null&&cycle&&ai.spIndex!==playerSP){
+          const st=splinterState(t,cycle.index,ai.spIndex,stackPos,drops[ai.spIndex]);
+          pos=st?st.pos:add2(stackPos,ai.baseOffset);
+        }else{
+          const wx=Math.sin(t*.85+ai.wobblePhase)*ai.wobbleAmp,wy=Math.cos(t*.72+ai.wobblePhase*1.3)*ai.wobbleAmp;
+          pos=add2(stackPos,add2(ai.baseOffset,{x:wx,y:wy}));}
+        ai.currentPos=pos;
+        ai.mesh.position.copy(w2v(pos,.325+(dur?liftY:0)));});}
+
+    // ── Splinters ─────────────────────────────────────────────────────────────
+    function updateSplinters(t,stackPos){
+      shardCylinders.forEach(c=>c.visible=false);
+      pulseTriangles.forEach(p=>p.visible=false);
+      splinterMeshes.forEach(m=>m.visible=false);
+      targetRing.visible=false;
+      const cycle=activeStarsplinterCycle(t);if(!cycle)return;
+      const playerSP=getCycleAssignment(cycle.index);
+      const orientB=getCycleOrientation(cycle.index);
+      const drops=splinterLayout(stackPos,orientB);
+      let li=0;
+      for(let i=0;i<3;i++){
+        if(i===playerSP){
+          const apply=phase.firstStarsplinter+cycle.index*phase.starsplinterSpacing+i*phase.starsApplyGap;
+          const explode=apply+phase.starsExplosionDelay,retEnd=explode+phase.returnDuration;
+          if(t<apply||t>retEnd){li+=6;continue;}
+          // Show target ring only if helper enabled
+          if(helperCheck.checked&&t<explode){
+            targetRing.visible=true;targetRing.position.copy(w2v(drops[i],.03));}
+          splinterMeshes[i].visible=true;splinterMeshes[i].position.copy(w2v(playerPos,.38));
+          if(t>=apply&&t<explode+.36){
+            const angles=shardAnglesForDrop(stackPos,drops[i],orientB);
+            for(const angle of angles){
+              const end=add2(playerPos,polar(angle,world.shardLength));
+              setShardCyl(li,playerPos,end);
+              if(t>=explode&&t<explode+.36){
+                const p=smooth(clamp((t-explode)/.36,0,1));
+                const tp=add2(playerPos,polar(angle,world.shardLength*p));
+                pulseTriangles[li].visible=true;pulseTriangles[li].position.copy(w2v(tp,.12));pulseTriangles[li].rotation.y=angle;}
+              li++;}}else li+=6;
+        }else{
+          const st=splinterState(t,cycle.index,i,stackPos,drops[i]);
+          if(!st){li+=6;continue;}
+          splinterMeshes[i].visible=true;splinterMeshes[i].position.copy(w2v(st.pos,.34));
+          if(st.shardsVisible){
+            for(const angle of st.angles){
+              const end=add2(st.pos,polar(angle,world.shardLength));
+              setShardCyl(li,st.pos,end);
+              if(st.exploding){
+                const p=smooth(clamp((t-st.explode)/.36,0,1));
+                const tp=add2(st.drop,polar(angle,world.shardLength*p));
+                pulseTriangles[li].visible=true;pulseTriangles[li].position.copy(w2v(tp,.12));pulseTriangles[li].rotation.y=angle;}
+              li++;}}else li+=6;}}}
+
+    // ── Heaven beam ───────────────────────────────────────────────────────────
+    function updateBeam(t){
+      const h=currentHeaven(t),active=Boolean(h&&t>=h.laserStart);
+      if(!active){
+        beamCyl.visible=beamGlowCyl.visible=false;
+        beamPulses.forEach(r=>r.visible=false);
+        laserFlashMat.opacity=0;return;}
+      const angle=raidAngleAt(t)-phase.raidDirection*40*Math.PI/180;
+      beamTip2d=polar(angle,world.stackDistance);
+      // Beam from top of boss sphere to floor at tip
+      const bossTop=new THREE.Vector3(0,world.bossRadius*scale*2,0);
+      const tipFloor=w2v(beamTip2d,0);
+      orientCylBetween(beamCyl,bossTop,tipFloor);
+      orientCylBetween(beamGlowCyl,bossTop,tipFloor);
+      beamCyl.visible=beamGlowCyl.visible=true;
+      // Pulse rings at tip
+      const pulse=((t-h.laserStart)%.8)/.8;
+      beamPulses.forEach((r,i)=>{
+        r.visible=true;const rp=(pulse+i/3)%1;
+        r.position.copy(w2v(beamTip2d,.08));r.scale.setScalar(.55+rp*2.2);r.material.opacity=.72*(1-rp);});
+      // Flash room red once per second
+      const flashPhase=((t-h.laserStart)%1.0);
+      laserFlashMat.opacity=flashPhase<.1?smooth(flashPhase/.1)*.22:flashPhase<.22?smooth(1-(flashPhase-.1)/.12)*.22:0;}
+
+    // ── OT cone ───────────────────────────────────────────────────────────────
+    function updateOTCone(t,stackPos){
+      const active=coneActive(t)&&t>phase.reintegrationCast+phase.stunDuration;
+      otConeMesh.visible=active;if(!active)return;
+      const otp=offTankPos(stackPos),n=norm2(otp);
+      otConeMesh.position.copy(w2v(otp,0));
+      const to=new THREE.Vector3(-n.x,0,-n.y).normalize();
+      otConeMesh.quaternion.setFromUnitVectors(new THREE.Vector3(1,0,0),to);}
+
+    // ── World markers ─────────────────────────────────────────────────────────
+    function updateWorldMarkers(t){
+      worldMarkers.forEach((m,i)=>{
+        const arr=markerArrivalTime(i),f0=arr-.5,f1=arr+1.8;
+        if(t>=f1){m.mesh.visible=m.ring.visible=false;return;}
+        m.mesh.visible=m.ring.visible=true;
+        const alpha=t>=f0?1-smooth((t-f0)/(f1-f0)):1;
+        m.mat.opacity=.5*alpha;m.ringMat.opacity=.85*alpha;
+        const isNext=i>0&&t<markerArrivalTime(i)-1&&(i===1?true:t>=markerArrivalTime(i-1));
+        m.mat.emissiveIntensity=isNext?.35+.2*Math.sin(t*5):.35;});}
+
+    // ── Stun ─────────────────────────────────────────────────────────────────
+    function updateStun(t){
+      const s=phase.reintegrationCast,e=s+phase.stunDuration,active=t>=s&&t<=e;
+      stunField.visible=active;if(!active)return;
+      const pulse=.5+.5*Math.sin((t-s)*Math.PI*3.4);
+      stunFieldMat.color.setHex(pulse>.5?0xff2a43:0x5cc8ff);stunFieldMat.opacity=.13+pulse*.16;}
+
+    // ── Cast bar ─────────────────────────────────────────────────────────────
+    function updateCastBar(t){
+      const active=t<phase.reintegrationCast;
+      castbarEl.classList.toggle("show",active);
+      if(active)castfillEl.style.width=`${(t/phase.reintegrationCast*100).toFixed(1)}%`;}
+
+    // ── Camera ────────────────────────────────────────────────────────────────
+    function updateCamera(liftY){
+      const ref=len2(playerPos)<1?{x:0,y:-world.stackDistance}:playerPos;
+      const radial=norm2(ref);
+      const camPos2d=add2(ref,mul2(radial,CAM_BACK));
+      const target=w2v(ref,1.15+liftY);
+      const desired=w2v(camPos2d,CAM_H+liftY*.35);
+      camera.position.lerp(desired,.12);camera.lookAt(target.x,target.y,target.z);}
+
+    // ── Score ─────────────────────────────────────────────────────────────────
+    function updateScore(t,dt,stackPos){
+      if(t<phase.reintegrationCast+phase.stunDuration)return;
+      if(!running)return;
+      const inLight=len2(sub2(playerPos,stackPos))<=world.lightRadius;
+      if(inLight){
+        const rate=helperCheck.checked?.5:1;
+        const gain=rate*dt*Number(speedInput.value);
+        score+=gain;safeAccum+=gain;}}
+
+    function gradeScore(s){
+      if(s>=70)return{g:'A+',cls:'gAp',desc:'Flawless'};
+      if(s>=55)return{g:'A',cls:'gA',desc:'Excellent'};
+      if(s>=40)return{g:'B',cls:'gB',desc:'Good'};
+      if(s>=25)return{g:'C',cls:'gC',desc:'Adequate'};
+      if(s>=10)return{g:'D',cls:'gD',desc:'Rough'};
+      if(s>=0) return{g:'F',cls:'gF',desc:'Failed'};
+      return{g:'F-',cls:'gFm',desc:'Catastrophic'};}
+
+    function showScoreboard(){
+      const rounded=Math.round(score);
+      const gr=gradeScore(rounded);
+      document.getElementById("sgrade").textContent=gr.g;
+      document.getElementById("sgrade").className=`score-grade ${gr.cls}`;
+      document.getElementById("sfinal").textContent=`${rounded} pts — ${gr.desc}`;
+      document.getElementById("sr-safe").textContent=`+${Math.round(safeAccum)}`;
+      document.getElementById("sr-slice").textContent=`−${penalties.sliceOthers||0}`;
+      document.getElementById("sr-sliced").textContent=`−${penalties.sliced||0}`;
+      document.getElementById("sr-munch").textContent=`−${penalties.munched||0}`;
+      document.getElementById("sr-midnight").textContent=`−${penalties.midnight||0}`;
+      document.getElementById("sr-zap").textContent=`−${penalties.zapped||0}`;
+      document.getElementById("sr-wrongside").textContent=`−${penalties.wrongSide||0}`;
+      scoreboardEl.classList.add("show");scoreboardShown=true;}
+
+    // ── Collision checks ──────────────────────────────────────────────────────
+    function checkExplosions(t,stackPos){
+      const cycle=activeStarsplinterCycle(t);if(!cycle)return;
+      const playerSP=getCycleAssignment(cycle.index),orientB=getCycleOrientation(cycle.index);
+      const drops=splinterLayout(stackPos,orientB);
+      for(let si=0;si<3;si++){
+        const apply=phase.firstStarsplinter+cycle.index*phase.starsplinterSpacing+si*phase.starsApplyGap;
+        const explode=apply+phase.starsExplosionDelay,key=`${cycle.index}-${si}`;
+        if(t>=explode&&t<explode+.12&&!checkedExplosions.has(key)){
+          checkedExplosions.add(key);
+          if(si===playerSP){
+            const angles=shardAnglesForDrop(stackPos,drops[si],orientB);
+            let count=0;
+            for(const ai of aiPlayers){if(!ai.mesh.visible)continue;for(const ang of angles){if(shardHitsPos(playerPos,ang,ai.currentPos)){count++;break;}}}
+            if(count>0){
+              const pen=count*10;score-=pen;penalties.sliceOthers=(penalties.sliceOthers||0)+pen;
+              showMessage(`YOU SLICED ${count} PLAYER${count>1?'S':''}! −${pen}`,'bad');}
+            // Check wrong side — splinterSides[0,2]=1 (LEFT), splinterSides[1]=-1 (RIGHT)
+            // Tangent points LEFT relative to boss-facing; positive dot = LEFT side
+            const radial=norm2(stackPos),tangent={x:-radial.y,y:radial.x};
+            const lateral=(playerPos.x-stackPos.x)*tangent.x+(playerPos.y-stackPos.y)*tangent.y;
+            const expectedSign=splinterSides[playerSP];// 1=LEFT, -1=RIGHT
+            if(Math.abs(lateral)>20&&lateral*expectedSign<0){
+              score-=15;penalties.wrongSide+=15;
+              const dirs=['LEFT','RIGHT','LEFT'];
+              showMessage(`WRONG SIDE — should be ${dirs[playerSP]}! −15`,'bad',3);}
+          }else{
+            const angles=shardAnglesForDrop(stackPos,drops[si],orientB);
+            for(const ang of angles){if(shardHitsPos(drops[si],ang,playerPos)){
+              score-=10;penalties.sliced=(penalties.sliced||0)+10;
+              showMessage('YOU GOT SLICED! −10','danger');break;}}}}}}
+    function checkOnYouSP(t,stackPos){
+      const cycle=activeStarsplinterCycle(t);if(!cycle)return;
+      const playerSP=getCycleAssignment(cycle.index);
+      const apply=phase.firstStarsplinter+cycle.index*phase.starsplinterSpacing+playerSP*phase.starsApplyGap;
+      const key=`onyou-${cycle.index}`;
+      if(t>=apply&&t<apply+.15&&!checkedExplosions.has(key)){
+        checkedExplosions.add(key);
+        const dirs=['⬅ LEFT','RIGHT ➡','⬅ LEFT'];
+        showMessage(`ON YOU — ${dirs[playerSP]}`,'alert',3.5);}}
+    function checkZap(t){
+      const h=currentHeaven(t);if(!h||t<h.laserStart)return;
+      const key=`laser-${h.index}`;if(checkedLasers.has(key))return;
+      if(t>h.end){checkedLasers.add(key);return;}
+      if(len2(sub2(playerPos,beamTip2d))<32){
+        score-=100;penalties.zapped=(penalties.zapped||0)+100;
+        showMessage('YOU GOT ZAPPED! −100','danger');checkedLasers.add(key);}}
+    function checkMunch(t){
+      if(t-lastMunchTime<3)return;
+      for(const a of adds){
+        if(a.wave||t<a.soakedUntil)continue;
+        if(len2(sub2(playerPos,a.pos))<14){
+          score-=5;penalties.munched=(penalties.munched||0)+5;
+          showMessage('YOU GOT MUNCHED! −5','danger',2.5);lastMunchTime=t;return;}}}
+    function checkMidnight(t,stackPos){
+      if(t<phase.reintegrationCast+phase.stunDuration)return;
+      if(t-lastMidnightTime<3)return;
+      if(len2(sub2(playerPos,stackPos))>world.lightRadius){
+        score-=100;penalties.midnight=(penalties.midnight||0)+100;
+        showMessage('MIDNIGHT FALLS! −100','danger',2.5);lastMidnightTime=t;}}
+
+    // ── HUD / Raid call ───────────────────────────────────────────────────────
+    function updateRaidCall(t){
+      const countdown=heavenCountdownAt(t);
+      movecallEl.classList.toggle("show",Boolean(countdown));
+      if(countdown)movecountdownEl.textContent=Math.max(1,Math.ceil(countdown.remaining));
+      const cycle=activeStarsplinterCycle(t);
+      if(cycle&&t>=cycle.start-1.5){
+        raidcallEl.classList.add("show");
+        spSlotEls.forEach((el,i)=>{
+          const apply=phase.firstStarsplinter+cycle.index*phase.starsplinterSpacing+i*phase.starsApplyGap;
+          const retEnd=apply+phase.starsExplosionDelay+phase.returnDuration;
+          el.classList.toggle("stepping",t>=apply&&t<=retEnd);});
+      }else raidcallEl.classList.remove("show");
+      if(time>messageExpiry)messageEl.className='';}
+    function updateHud(t){
+      const stars=activeStarsplinterCycle(t),heaven=currentHeaven(t);
+      let label="Holding";
+      if(t<=phase.reintegrationCast)label="Reintegration";
+      else if(t<=phase.reintegrationCast+phase.stunDuration)label="Stunned";
+      else if(stars&&t>=stars.start&&t<=stars.end)label="Starsplinters";
+      else if(heaven)label="Heaven and Hell";
+      clockEl.textContent=`${t.toFixed(1)}s`;stateEl.textContent=label;
+      cycleEl.textContent=`${Math.min(4,Math.max(1,stars?stars.index+1:Math.floor((t-phase.firstStarsplinter)/phase.starsplinterSpacing)+1))} / 4`;
+      scorePillEl.textContent=Math.round(score);}
+
+    // ── Frame ─────────────────────────────────────────────────────────────────
+    function frame(now){
+      const dt=Math.min(.08,(now-last)/1000);last=now;
+      if(running){
+        time+=dt*Number(speedInput.value);
+        if(time>=phase.duration){
+          time=phase.duration;running=false;playBtn.textContent="Play";
+          if(!scoreboardShown)showScoreboard();}}
+      const stackPos=raidPosAt(time),otPos=offTankPos(stackPos);
+      const immunePosNow=immunityPos(time,stackPos);
+      const liftY=stunLiftAt(time);
+      const dur=time>=phase.reintegrationCast&&time<=phase.reintegrationCast+phase.stunDuration;
+      const aft=time>phase.reintegrationCast+phase.stunDuration;
+      const showRaid=dur||aft;
+
+      updateAdds(time,dt*Number(speedInput.value),stackPos,otPos,immunePosNow);
+      updateDyingAdds(time);
+
+      if(dur)playerPos={...stackPos};
+
+      stackGlow.visible=lightRing.visible=lightDisc.visible=showRaid;
+      stackGlow.position.copy(w2v(stackPos,.05+liftY));
+      lightRing.position.copy(w2v(stackPos,.06+liftY));
+      lightDisc.position.set(stackPos.x*scale,.02+liftY,stackPos.y*scale);
+
+      otCyl.visible=showRaid;otCyl.position.copy(w2v(otPos,.36+liftY));
+
+      immuneMesh.visible=Boolean(aft&&currentHeaven(time));
+      immuneMesh.position.copy(w2v(immunePosNow,.34));
+      const heaven=currentHeaven(time);
+      if(heaven)immuneMesh.material.color.setHex(immunityColors[heaven.index]);
+
+      updateStun(time);
+      updateBeam(time);
+      updateSplinters(time,stackPos);
+      updateAIPlayers(time,stackPos,liftY);
+      updatePlayer(time,dt*Number(speedInput.value),stackPos,liftY);
+      updateOTCone(time,stackPos);
+      updateConeKills(time,stackPos);
+      updateWorldMarkers(time);
+      updateCastBar(time);
+      updateCamera(liftY);
+      updateRaidCall(time);
+      updateHud(time);
+      if(aft){
+        updateScore(time,dt,stackPos);
+        checkExplosions(time,stackPos);
+        checkOnYouSP(time,stackPos);
+        checkZap(time);
+        checkMunch(time);
+        checkMidnight(time,stackPos);}
+
+      boss.rotation.y+=dt*.35;
+      renderer.render(scene,camera);
+      requestAnimationFrame(frame);}
+
+    function doRestart(){
+      for(const a of adds)scene.remove(a.mesh);
+      for(const d of dyingAdds)scene.remove(d.mesh);
+      adds=[];dyingAdds=[];time=0;seed=5;lastAddTime=-999;nextAddId=1;waveSpawned=new Set();
+      Object.keys(cycleAssignments).forEach(k=>delete cycleAssignments[k]);
+      Object.keys(cycleOrientations).forEach(k=>delete cycleOrientations[k]);
+      checkedExplosions.clear();checkedLasers.clear();
+      playerPos={x:0,y:-world.stackDistance};
+      messageExpiry=0;messageEl.className='';lastMunchTime=-999;lastMidnightTime=-999;
+      score=0;safeAccum=0;Object.keys(penalties).forEach(k=>penalties[k]=0);scoreboardShown=false;
+      scoreboardEl.classList.remove("show");
+      running=true;playBtn.textContent="Pause";
+      camera.position.set(0,CAM_H,-CAM_BACK*scale);last=performance.now();}
+
+    playBtn.addEventListener("click",()=>{running=!running;playBtn.textContent=running?"Pause":"Play";last=performance.now();});
+    restartBtn.addEventListener("click",doRestart);
+    document.getElementById("sbRestart").addEventListener("click",doRestart);
+    window.addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+
+    camera.position.set(0,CAM_H,-CAM_BACK*scale);
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>
