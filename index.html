@@ -934,7 +934,7 @@
       stunFieldMat.color.setHex(pulse>.5?0xff2a43:0x5cc8ff);stunFieldMat.opacity=.13+pulse*.16;}
 
     // ── Boss cast bar (Heaven & Hell) ─────────────────────────────────────────
-    const _bossTop=new THREE.Vector3(0,world.bossRadius*scale*2+0.6,0);
+    const _bossTop=new THREE.Vector3(0,world.bossRadius*scale*0.5,0);
     function updateBossCastBar(t){
       const h=currentHeaven(t);
       if(!h){bossCastbarEl.classList.remove("show");return;}
@@ -943,8 +943,8 @@
       bcbLabelEl.textContent=casting?"Heaven and Hell":"Channeling";
       bcbFillEl.className="bcb-fill "+(casting?"casting":"channeling");
       bcbFillEl.style.width=`${clamp(fill,0,1)*100}%`;
-      // Project boss top to screen
-      _bossTop.set(0,world.bossRadius*scale*2+0.6,0);
+      // Project boss mid to screen
+      _bossTop.set(0,world.bossRadius*scale*0.5,0);
       const p=_bossTop.clone().project(camera);
       bossCastbarEl.style.left=`${(p.x*.5+.5)*innerWidth}px`;
       bossCastbarEl.style.top=`${(-p.y*.5+.5)*innerHeight}px`;
