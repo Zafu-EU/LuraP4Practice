@@ -93,6 +93,18 @@
     .chaotic-row input[type="checkbox"]{margin-top:2px;accent-color:#ff9f1c;width:15px;height:15px;flex-shrink:0;cursor:pointer;}
     .chaotic-row label{font-size:11px;cursor:pointer;line-height:1.4;color:#ff9f1c;}
     .chaotic-row label span{color:var(--muted);}
+    /* Boss cast bar */
+    #boss-castbar{position:fixed;transform:translate(-50%,-100%);margin-top:-12px;
+      width:190px;z-index:4;pointer-events:none;opacity:0;transition:opacity .18s;
+      background:rgb(0 0 0/78%);border:1px solid rgb(255 255 255/22%);border-radius:5px;
+      padding:5px 8px;}
+    #boss-castbar.show{opacity:1;}
+    .bcb-label{font-size:11px;font-weight:700;color:#fff;margin-bottom:4px;text-align:center;
+      letter-spacing:.06em;text-transform:uppercase;}
+    .bcb-track{height:11px;background:rgb(0 0 0/55%);border:1px solid rgb(255 255 255/14%);border-radius:3px;overflow:hidden;}
+    .bcb-fill{height:100%;width:0%;border-radius:3px;transition:background .2s;}
+    .bcb-fill.casting{background:linear-gradient(90deg,#7c3aed,#c084fc);}
+    .bcb-fill.channeling{background:linear-gradient(90deg,#ff2a43,#ff8c00);}
     /* World Cup popup */
     #worldcup{position:fixed;z-index:20;pointer-events:none;opacity:0;transition:opacity .15s;
       font-size:18px;font-weight:900;color:#fff;text-shadow:0 0 18px rgba(255,165,0,.9),0 2px 12px rgba(0,0,0,.9);
@@ -265,6 +277,10 @@
         <span>Surprise callouts · Raid dies · 1.3pts/s · ⚽</span></label>
     </div>
   </aside>
+  <div id="boss-castbar">
+    <div class="bcb-label" id="bcb-label">Heaven and Hell</div>
+    <div class="bcb-track"><div class="bcb-fill" id="bcb-fill"></div></div>
+  </div>
   <div id="worldcup"></div>
   <div id="guildchat">
     <div class="gc-header">⚔ GUILD CHAT</div>
@@ -308,6 +324,7 @@
     const movecountdownEl=document.getElementById("movecountdown"),messageEl=document.getElementById("message");
     const spSlotEls=[0,1,2].map(i=>document.getElementById(`sp${i}`));
     const castbarEl=document.getElementById("castbar"),castfillEl=document.getElementById("castfill");
+    const bossCastbarEl=document.getElementById("boss-castbar"),bcbLabelEl=document.getElementById("bcb-label"),bcbFillEl=document.getElementById("bcb-fill");
     const scoreboardEl=document.getElementById("scoreboard");
     const luaErrorEl=document.getElementById("lua-error"),luaErrorBodyEl=document.getElementById("lua-error-body");
     const deathMsgEl=document.getElementById("death-msg");
@@ -916,6 +933,23 @@
       const pulse=.5+.5*Math.sin((t-s)*Math.PI*3.4);
       stunFieldMat.color.setHex(pulse>.5?0xff2a43:0x5cc8ff);stunFieldMat.opacity=.13+pulse*.16;}
 
+    // ── Boss cast bar (Heaven & Hell) ─────────────────────────────────────────
+    const _bossTop=new THREE.Vector3(0,world.bossRadius*scale*2+0.6,0);
+    function updateBossCastBar(t){
+      const h=currentHeaven(t);
+      if(!h){bossCastbarEl.classList.remove("show");return;}
+      const casting=t<h.laserStart;
+      const fill=casting?(t-h.start)/phase.heavenRampDuration:1-(t-h.laserStart)/phase.heavenLaserDuration;
+      bcbLabelEl.textContent=casting?"Heaven and Hell":"Channeling";
+      bcbFillEl.className="bcb-fill "+(casting?"casting":"channeling");
+      bcbFillEl.style.width=`${clamp(fill,0,1)*100}%`;
+      // Project boss top to screen
+      _bossTop.set(0,world.bossRadius*scale*2+0.6,0);
+      const p=_bossTop.clone().project(camera);
+      bossCastbarEl.style.left=`${(p.x*.5+.5)*innerWidth}px`;
+      bossCastbarEl.style.top=`${(-p.y*.5+.5)*innerHeight}px`;
+      bossCastbarEl.classList.add("show");}
+
     // ── Cast bar ─────────────────────────────────────────────────────────────
     function updateCastBar(t){
       const active=t<phase.reintegrationCast;
@@ -1137,6 +1171,7 @@
       updateOTCone(time,stackPos);
       updateConeKills(time,stackPos);
       updateWorldMarkers(time);
+      updateBossCastBar(time);
       updateCastBar(time);
       updateCamera(liftY);
       reintHintEl.classList.toggle("show",time<phase.reintegrationCast&&running);
