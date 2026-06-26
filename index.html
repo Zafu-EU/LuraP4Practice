@@ -822,7 +822,7 @@
       if(!running)return;
       const inLight=len2(sub2(playerPos,stackPos))<=world.lightRadius;
       if(inLight){
-        const base=chaoticCheck.checked?1.3:(helperCheck.checked?.5:1);
+        const base=chaoticCheck.checked?1.15:(helperCheck.checked?.5:1);
         const gain=base*dt*Number(speedInput.value);
         score+=gain;safeAccum+=gain;}}
 
